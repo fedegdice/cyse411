@@ -6,7 +6,7 @@ const PORT = 8080;
 
 // Add ALL security headers middleware
 app.use((req, res, next) => {
-  // Content Security Policy - prevents XSS attacks (stricter without unsafe-inline)
+  // Content Security Policy - prevents XSS attacks (strict, no unsafe-inline)
   res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; form-action 'self'");
   
   // X-Frame-Options - prevents clickjacking
@@ -34,8 +34,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static files from current directory
-app.use(express.static("."));
+// Serve static files from public directory only (prevents exposing sensitive files)
+app.use(express.static("public"));
 
 // Handle 404s
 app.use((req, res) => {
