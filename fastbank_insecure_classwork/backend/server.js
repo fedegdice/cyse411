@@ -6,6 +6,7 @@ const sqlite3 = require("sqlite3").verbose();
 const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
 const csurf = require("csurf");
+const path = require("path");
 
 const app = express();
 
@@ -56,6 +57,9 @@ app.use(
 
 app.use(bodyParser.json());
 app.use(cookieParser());
+
+// FIX: Serve frontend static files with security headers
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 // FIX: Add CSRF protection middleware
 const csrfProtection = csurf({ cookie: true });
