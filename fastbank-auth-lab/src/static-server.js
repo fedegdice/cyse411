@@ -6,8 +6,8 @@ const PORT = 8080;
 
 // Add ALL security headers middleware
 app.use((req, res, next) => {
-  // Content Security Policy - prevents XSS attacks
-  res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'");
+  // Content Security Policy - prevents XSS attacks (stricter without unsafe-inline)
+  res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; form-action 'self'");
   
   // X-Frame-Options - prevents clickjacking
   res.setHeader("X-Frame-Options", "DENY");
