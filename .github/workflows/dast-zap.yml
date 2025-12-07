@@ -19,40 +19,20 @@ jobs:
         with:
           node-version: '20'
       
-      - name: Install backend dependencies
-        working-directory: fastbank_insecure_classwork/backend
-        run: npm install
-      
-      - name: Install frontend dependencies
-        working-directory: fastbank_insecure_classwork/frontend
-        run: npm install
-      
-      - name: Start backend
+      - name: Install lab dependencies
         working-directory: fastbank_insecure_classwork/backend
         run: |
-          nohup npm start &
-          sleep 10
+          npm install
       
-      - name: Start frontend
-        working-directory: fastbank_insecure_classwork/frontend
+      - name: Start vulnerable app
+        working-directory: fastbank_insecure_classwork/backend
         run: |
           nohup npm start &
           sleep 30
       
-      - name: Check what's running
-        run: |
-          echo "=== Checking processes ==="
-          ps aux | grep node
-          echo "=== Checking ports ==="
-          ss -tlnp
-          echo "=== Testing localhost:3000 ==="
-          curl -v http://localhost:3000 || echo "Port 3000 failed"
-          echo "=== Testing localhost:8080 ==="
-          curl -v http://localhost:8080 || echo "Port 8080 failed"
-      
       - name: Run OWASP ZAP full scan
         uses: zaproxy/action-full-scan@v0.13.0
         with:
-          target: 'http://localhost:8080'
+          target: 'http://localhost:4000'
           fail_action: true  # fail job if ZAP finds alerts
           allow_issue_writing: false  # don't auto-open GitHub issues
