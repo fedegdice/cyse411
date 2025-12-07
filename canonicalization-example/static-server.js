@@ -34,8 +34,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve static files from current directory
-app.use(express.static("."));
+// Serve static files from public directory only (prevents exposing sensitive files)
+app.use(express.static("public"));
 
 // Handle 404s
 app.use((req, res) => {
