@@ -9,7 +9,7 @@ const https = require("https");
 const fs = require("fs");
 
 const app = express();
-const PORT = 3001;
+const PORT = 8080;
 const HTTPS_PORT = 3443;
 
 // FIX: Add security headers middleware
