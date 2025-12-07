@@ -9,6 +9,31 @@ const csurf = require("csurf");
 
 const app = express();
 
+// FIX: Add security headers middleware
+app.use((req, res, next) => {
+  // Content Security Policy - prevents XSS attacks
+  res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
+  
+  // X-Frame-Options - prevents clickjacking
+  res.setHeader("X-Frame-Options", "DENY");
+  
+  // X-Content-Type-Options - prevents MIME sniffing
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  
+  // Permissions Policy - restricts browser features
+  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  
+  // Cross-Origin policies - Spectre protection
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  
+  // Remove server version info
+  res.removeHeader("X-Powered-By");
+  
+  next();
+});
+
 // FIX: Add rate limiting to prevent brute force attacks
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
