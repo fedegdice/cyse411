@@ -21,18 +21,18 @@ jobs:
           node-version: '20'
       
       - name: Install backend dependencies
-        working-directory: idor
+        working-directory: fastbank-auth-lab/src
         run: npm install
       
       - name: Start backend on port 4000
-        working-directory: idor
+        working-directory: fastbank-auth-lab/src
         run: |
           nohup npm start &
           sleep 10
       
       # CHANGED: Use Node.js static server with security headers instead of Python
       - name: Serve frontend with Node.js (secure)
-        working-directory: idor
+        working-directory: fastbank-auth-lab/src
         run: |
           nohup node static-server.js &
           sleep 5
