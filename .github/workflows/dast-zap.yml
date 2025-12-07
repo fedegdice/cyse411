@@ -1,9 +1,7 @@
 name: DAST - OWASP ZAP Full Scan
 on:
-  workflow_dispatch:  # run manually from Actions tab
-  # You can also add:
-  # push:
-  #   branches: [ main ]
+  workflow_dispatch:  
+  
 jobs:
   zap_scan:
     runs-on: ubuntu-latest
@@ -30,7 +28,7 @@ jobs:
           nohup npm start &
           sleep 10
       
-      # CHANGED: Use Node.js static server with security headers instead of Python
+      
       - name: Serve frontend with Node.js (secure)
         working-directory: fastbank-auth-lab/src
         run: |
