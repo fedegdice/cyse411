@@ -5,9 +5,12 @@ const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const csurf = require("csurf");
 const rateLimit = require("express-rate-limit");
+const https = require("https");
+const fs = require("fs");
 
 const app = express();
 const PORT = 3001;
+const HTTPS_PORT = 3443;
 
 // FIX: Add security headers middleware
 app.use((req, res, next) => {
@@ -28,8 +31,20 @@ app.use((req, res, next) => {
   res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   
+  // Strict Transport Security - forces HTTPS
+  if (req.secure) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  
   // Remove server version info
   res.removeHeader("X-Powered-By");
+  
+  // FIX: Add Cache-Control for sensitive pages
+  if (req.path.startsWith('/api/')) {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  }
   
   next();
 });
@@ -134,7 +149,7 @@ app.post("/api/login", loginLimiter, async (req, res) => {
   // FIX: Set secure cookie flags
   res.cookie("session", token, {
     httpOnly: true,  // Prevents JavaScript access (XSS protection)
-    secure: process.env.NODE_ENV === "production", // HTTPS only in production
+    secure: req.secure || process.env.NODE_ENV === "production", // HTTPS only
     sameSite: "strict", // CSRF protection
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   });
@@ -152,6 +167,24 @@ app.post("/api/logout", csrfProtection, (req, res) => {
   res.json({ success: true });
 });
 
+// Start HTTP server (for development)
 app.listen(PORT, () => {
-  console.log(`FastBank Auth Lab running at http://localhost:${PORT}`);
+  console.log(`FastBank Auth Lab (HTTP) running at http://localhost:${PORT}`);
 });
+
+// Start HTTPS server (recommended for production)
+// Generate self-signed certificate for local testing:
+// openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+try {
+  const httpsOptions = {
+    key: fs.readFileSync('./key.pem'),
+    cert: fs.readFileSync('./cert.pem')
+  };
+  
+  https.createServer(httpsOptions, app).listen(HTTPS_PORT, () => {
+    console.log(`FastBank Auth Lab (HTTPS) running at https://localhost:${HTTPS_PORT}`);
+  });
+} catch (err) {
+  console.log('HTTPS not configured. Run the following to create certificates:');
+  console.log('openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes');
+}
