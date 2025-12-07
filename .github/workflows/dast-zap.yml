@@ -21,18 +21,18 @@ jobs:
           node-version: '20'
       
       - name: Install backend dependencies
-        working-directory: fastbank-auth-lab/src
+        working-directory: canonicalization-example
         run: npm install
       
       - name: Start backend on port 4000
-        working-directory: fastbank-auth-lab/src
+        working-directory: canonicalization-example
         run: |
           nohup npm start &
           sleep 10
       
       # CHANGED: Use Node.js static server with security headers instead of Python
       - name: Serve frontend with Node.js (secure)
-        working-directory: fastbank-auth-lab/src
+        working-directory: canonicalization-example
         run: |
           nohup node static-server.js &
           sleep 5
