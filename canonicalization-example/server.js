@@ -1,10 +1,19 @@
-// server.js
+// server.js - FIXED VERSION
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
+
+// Fix: Add rate limiting to prevent brute force attacks
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests per windowMs
+});
+app.use(limiter);
+
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -12,15 +21,29 @@ app.use(express.static(path.join(__dirname, 'public')));
 const BASE_DIR = path.resolve(__dirname, 'files');
 if (!fs.existsSync(BASE_DIR)) fs.mkdirSync(BASE_DIR, { recursive: true });
 
-// helper to canonicalize and check
+// Fix: Secure path resolution with proper canonicalization
 function resolveSafe(baseDir, userInput) {
+  // Decode URI component safely
   try {
     userInput = decodeURIComponent(userInput);
-  } catch (e) {}
-  return path.resolve(baseDir, userInput);
+  } catch (e) {
+    return null; // Invalid input
+  }
+  
+  // Resolve and canonicalize the path
+  const resolved = path.resolve(baseDir, userInput);
+  const canonicalBase = fs.realpathSync(baseDir);
+  const canonicalPath = path.resolve(resolved);
+  
+  // Ensure the resolved path is within the base directory
+  if (!canonicalPath.startsWith(canonicalBase + path.sep)) {
+    return null; // Path traversal attempt
+  }
+  
+  return canonicalPath;
 }
 
-// Secure route
+// Secure route with proper validation
 app.post(
   '/read',
   body('filename')
@@ -31,32 +54,41 @@ app.post(
     .notEmpty().withMessage('filename must not be empty')
     .custom(value => {
       if (value.includes('\0')) throw new Error('null byte not allowed');
+      if (value.includes('..')) throw new Error('path traversal not allowed');
       return true;
     }),
   (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
+    
     const filename = req.body.filename;
     const normalized = resolveSafe(BASE_DIR, filename);
-    if (!normalized.startsWith(BASE_DIR + path.sep)) {
-      return res.status(403).json({ error: 'Path traversal detected' });
+    
+    if (!normalized) {
+      return res.status(403).json({ error: 'Invalid or unsafe path' });
     }
-    if (!fs.existsSync(normalized)) return res.status(404).json({ error: 'File not found' });
-
+    
+    if (!fs.existsSync(normalized)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
     const content = fs.readFileSync(normalized, 'utf8');
     res.json({ path: normalized, content });
   }
 );
 
-// Vulnerable route (demo)
+// Fix: Remove or secure the vulnerable route
+// This route should be removed in production
+// Keeping it commented for educational purposes
+/*
 app.post('/read-no-validate', (req, res) => {
   const filename = req.body.filename || '';
-  const joined = path.join(BASE_DIR, filename); // intentionally vulnerable
+  const joined = path.join(BASE_DIR, filename); // VULNERABLE: No validation
   if (!fs.existsSync(joined)) return res.status(404).json({ error: 'File not found', path: joined });
   const content = fs.readFileSync(joined, 'utf8');
   res.json({ path: joined, content });
 });
+*/
 
 // Helper route for samples
 app.post('/setup-sample', (req, res) => {
