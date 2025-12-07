@@ -4,19 +4,36 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const sqlite3 = require("sqlite3").verbose();
 const crypto = require("crypto");
+const rateLimit = require("express-rate-limit");
+const csurf = require("csurf");
 
 const app = express();
+
+// FIX: Add rate limiting to prevent brute force attacks
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 login requests per windowMs
+  message: { error: "Too many login attempts, please try again later" }
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100 // limit each IP to 100 requests per windowMs
+});
 
 // --- BASIC CORS (clean, not vulnerable) ---
 app.use(
   cors({
-   origin: ["http://localhost:3001", "http://127.0.0.1:3001"],
+    origin: ["http://localhost:3001", "http://127.0.0.1:3001"],
     credentials: true
   })
 );
 
 app.use(bodyParser.json());
 app.use(cookieParser());
+
+// FIX: Add CSRF protection middleware
+const csrfProtection = csurf({ cookie: true });
 
 // --- IN-MEMORY SQLITE DB (clean) ---
 const db = new sqlite3.Database(":memory:");
@@ -48,10 +65,13 @@ db.serialize(() => {
     );
   `);
 
-  const passwordHash = crypto.createHash("sha256").update("password123").digest("hex");
+  // FIX: Use bcrypt instead of SHA256 for password hashing
+  const bcrypt = require("bcrypt");
+  const saltRounds = 12; // Increased from fast hash to proper bcrypt
+  const passwordHash = bcrypt.hashSync("password123", saltRounds);
 
   db.run(`INSERT INTO users (username, password_hash, email)
-          VALUES ('alice', '${passwordHash}', 'alice@example.com');`);
+          VALUES (?, ?, ?)`, ["alice", passwordHash, "alice@example.com"]);
 
   db.run(`INSERT INTO transactions (user_id, amount, description) VALUES (1, 25.50, 'Coffee shop')`);
   db.run(`INSERT INTO transactions (user_id, amount, description) VALUES (1, 100, 'Groceries')`);
@@ -60,8 +80,9 @@ db.serialize(() => {
 // --- SESSION STORE (simple, predictable token exactly like assignment) ---
 const sessions = {};
 
-function fastHash(pwd) {
-  return crypto.createHash("sha256").update(pwd).digest("hex");
+// FIX: Generate cryptographically secure random session IDs
+function generateSecureSessionId() {
+  return crypto.randomBytes(32).toString("hex");
 }
 
 function auth(req, res, next) {
@@ -71,96 +92,144 @@ function auth(req, res, next) {
   next();
 }
 
+// FIX: Get CSRF token endpoint
+app.get("/csrf-token", (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
+
 // ------------------------------------------------------------
-// Q4 — AUTH ISSUE 1 & 2: SHA256 fast hash + SQLi in username.
-// Q4 — AUTH ISSUE 3: Username enumeration.
-// Q4 — AUTH ISSUE 4: Predictable sessionId.
+// FIXED AUTH: Bcrypt + parameterized queries + secure sessions + generic error messages
 // ------------------------------------------------------------
-app.post("/login", (req, res) => {
+app.post("/login", loginLimiter, (req, res) => {
   const { username, password } = req.body;
 
-  const sql = `SELECT id, username, password_hash FROM users WHERE username = '${username}'`;
+  // FIX: Use parameterized query to prevent SQL injection
+  const sql = `SELECT id, username, password_hash FROM users WHERE username = ?`;
 
-  db.get(sql, (err, user) => {
-    if (!user) return res.status(404).json({ error: "Unknown username" });
-
-    const candidate = fastHash(password);
-    if (candidate !== user.password_hash) {
-      return res.status(401).json({ error: "Wrong password" });
+  db.get(sql, [username], async (err, user) => {
+    // FIX: Generic error message to prevent username enumeration
+    if (!user) {
+      return res.status(401).json({ error: "Invalid username or password" });
     }
 
-    const sid = `${username}-${Date.now()}`; // predictable
+    // FIX: Use bcrypt to verify password (async)
+    const bcrypt = require("bcrypt");
+    const match = await bcrypt.compare(password, user.password_hash);
+    
+    if (!match) {
+      return res.status(401).json({ error: "Invalid username or password" });
+    }
+
+    // FIX: Generate cryptographically secure session ID
+    const sid = generateSecureSessionId();
     sessions[sid] = { userId: user.id };
 
-    // Cookie is intentionally “normal” (not HttpOnly / secure)
-    res.cookie("sid", sid, {});
+    // FIX: Set secure cookie flags
+    res.cookie("sid", sid, {
+      httpOnly: true,  // Prevents XSS access to cookie
+      secure: process.env.NODE_ENV === "production", // HTTPS only in production
+      sameSite: "strict" // CSRF protection
+    });
 
     res.json({ success: true });
   });
 });
 
 // ------------------------------------------------------------
-// /me — clean route, no vulnerabilities
+// /me — clean route, now with parameterized query
 // ------------------------------------------------------------
-app.get("/me", auth, (req, res) => {
-  db.get(`SELECT username, email FROM users WHERE id = ${req.user.id}`, (err, row) => {
+app.get("/me", apiLimiter, auth, (req, res) => {
+  // FIX: Use parameterized query
+  db.get(`SELECT username, email FROM users WHERE id = ?`, [req.user.id], (err, row) => {
     res.json(row);
   });
 });
 
 // ------------------------------------------------------------
-// Q1 — SQLi in transaction search
+// FIXED: SQL injection in transaction search
 // ------------------------------------------------------------
-app.get("/transactions", auth, (req, res) => {
+app.get("/transactions", apiLimiter, auth, (req, res) => {
   const q = req.query.q || "";
+  
+  // FIX: Use parameterized query to prevent SQL injection
   const sql = `
     SELECT id, amount, description
     FROM transactions
-    WHERE user_id = ${req.user.id}
-      AND description LIKE '%${q}%'
+    WHERE user_id = ?
+      AND description LIKE ?
     ORDER BY id DESC
   `;
-  db.all(sql, (err, rows) => res.json(rows));
-});
-
-// ------------------------------------------------------------
-// Q2 — Stored XSS + SQLi in feedback insert
-// ------------------------------------------------------------
-app.post("/feedback", auth, (req, res) => {
-  const comment = req.body.comment;
-  const userId = req.user.id;
-
-  db.get(`SELECT username FROM users WHERE id = ${userId}`, (err, row) => {
-    const username = row.username;
-
-    const insert = `
-      INSERT INTO feedback (user, comment)
-      VALUES ('${username}', '${comment}')
-    `;
-    db.run(insert, () => {
-      res.json({ success: true });
-    });
-  });
-});
-
-app.get("/feedback", auth, (req, res) => {
-  db.all("SELECT user, comment FROM feedback ORDER BY id DESC", (err, rows) => {
+  
+  db.all(sql, [req.user.id, `%${q}%`], (err, rows) => {
+    if (err) return res.status(500).json({ error: "Database error" });
     res.json(rows);
   });
 });
 
 // ------------------------------------------------------------
-// Q3 — CSRF + SQLi in email update
+// FIXED: Stored XSS + SQL injection in feedback
 // ------------------------------------------------------------
-app.post("/change-email", auth, (req, res) => {
+app.post("/feedback", apiLimiter, auth, csrfProtection, (req, res) => {
+  const comment = req.body.comment;
+  const userId = req.user.id;
+
+  // FIX: Use parameterized queries
+  db.get(`SELECT username FROM users WHERE id = ?`, [userId], (err, row) => {
+    if (err || !row) return res.status(500).json({ error: "Database error" });
+    
+    const username = row.username;
+
+    // FIX: Use parameterized query to prevent SQL injection
+    const insert = `INSERT INTO feedback (user, comment) VALUES (?, ?)`;
+    
+    db.run(insert, [username, comment], (err) => {
+      if (err) return res.status(500).json({ error: "Database error" });
+      res.json({ success: true });
+    });
+  });
+});
+
+app.get("/feedback", apiLimiter, auth, (req, res) => {
+  db.all("SELECT user, comment FROM feedback ORDER BY id DESC", (err, rows) => {
+    if (err) return res.status(500).json({ error: "Database error" });
+    
+    // FIX: Sanitize output to prevent XSS (escape HTML)
+    const sanitized = rows.map(row => ({
+      user: escapeHtml(row.user),
+      comment: escapeHtml(row.comment)
+    }));
+    
+    res.json(sanitized);
+  });
+});
+
+// FIX: Helper function to escape HTML and prevent XSS
+function escapeHtml(text) {
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, m => map[m]);
+}
+
+// ------------------------------------------------------------
+// FIXED: CSRF protection + SQL injection in email update
+// ------------------------------------------------------------
+app.post("/change-email", apiLimiter, auth, csrfProtection, (req, res) => {
   const newEmail = req.body.email;
 
-  if (!newEmail.includes("@")) return res.status(400).json({ error: "Invalid email" });
+  if (!newEmail || !newEmail.includes("@")) {
+    return res.status(400).json({ error: "Invalid email" });
+  }
 
-  const sql = `
-    UPDATE users SET email = '${newEmail}' WHERE id = ${req.user.id}
-  `;
-  db.run(sql, () => {
+  // FIX: Use parameterized query to prevent SQL injection
+  const sql = `UPDATE users SET email = ? WHERE id = ?`;
+  
+  db.run(sql, [newEmail, req.user.id], (err) => {
+    if (err) return res.status(500).json({ error: "Database error" });
     res.json({ success: true, email: newEmail });
   });
 });
