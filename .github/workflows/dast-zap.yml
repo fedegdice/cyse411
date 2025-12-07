@@ -23,17 +23,17 @@ jobs:
           node-version: '20'
       
       - name: Install backend dependencies
-        working-directory: fastbank_insecure_classwork/backend
+        working-directory: fastbank_-auth-lab/src
         run: npm install
       
       - name: Start backend on port 4000
-        working-directory: fastbank_insecure_classwork/backend
+        working-directory: fastbank_-auth-lab/src
         run: |
           nohup npm start &
           sleep 10
       
       - name: Serve frontend with Python
-        working-directory: fastbank_insecure_classwork/frontend
+        working-directory: fastbank_-auth-lab/src
         run: |
           nohup python3 -m http.server 8080 &
           sleep 5
