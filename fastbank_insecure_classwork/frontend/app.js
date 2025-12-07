@@ -1,9 +1,9 @@
 const API = "http://localhost:4000";
 
-// Store CSRF token globally
+
 let csrfToken = null;
 
-// Fetch CSRF token on page load
+
 async function fetchCsrfToken() {
   try {
     const res = await fetch(`${API}/csrf-token`, { credentials: "include" });
@@ -35,7 +35,7 @@ async function login(e) {
   
   status.textContent = "Logged in!";
   
-  // Fetch CSRF token after login
+  
   await fetchCsrfToken();
   loadUser();
 }
@@ -76,13 +76,13 @@ async function submitFeedback(e) {
   e.preventDefault();
   const comment = document.getElementById("feedback-comment").value;
   
-  // Include CSRF token in request
+  
   const res = await fetch(`${API}/feedback`, {
     method: "POST",
     credentials: "include",
     headers: { 
       "Content-Type": "application/json",
-      "CSRF-Token": csrfToken  // Add CSRF token header
+      "CSRF-Token": csrfToken  
     },
     body: JSON.stringify({ comment })
   });
@@ -102,9 +102,9 @@ async function loadFeedback() {
   container.innerHTML = "";
   
   list.forEach(f => {
-    // XSS is now prevented on the backend with HTML escaping
+    
     const p = document.createElement("p");
-    // Using textContent instead of innerHTML for extra safety
+    
     const strong = document.createElement("strong");
     strong.textContent = f.user + ": ";
     p.appendChild(strong);
@@ -117,13 +117,13 @@ async function updateEmail(e) {
   e.preventDefault();
   const email = document.getElementById("new-email").value;
   
-  // Include CSRF token in request
+  
   const res = await fetch(`${API}/change-email`, {
     method: "POST",
     credentials: "include",
     headers: { 
       "Content-Type": "application/json",
-      "CSRF-Token": csrfToken  // Add CSRF token header
+      "CSRF-Token": csrfToken  
     },
     body: JSON.stringify({ email })
   });
@@ -133,14 +133,14 @@ async function updateEmail(e) {
     return;
   }
   
-  loadUser(); // reload email
+  loadUser(); 
 }
 
-// Event listeners
+
 document.getElementById("login-form").onsubmit = login;
 document.getElementById("search-form").onsubmit = searchTransactions;
 document.getElementById("feedback-form").onsubmit = submitFeedback;
 document.getElementById("email-form").onsubmit = updateEmail;
 
-// Fetch CSRF token when page loads (in case already logged in)
+
 fetchCsrfToken();
