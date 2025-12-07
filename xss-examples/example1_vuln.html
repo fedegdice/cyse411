@@ -1,6 +1,21 @@
-<!-- vulnerable -->
+<!-- FIXED: XSS vulnerability -->
 <div id="out"></div>
 <script>
   const q = new URLSearchParams(location.search).get('q') || '';
-  document.getElementById('out').innerHTML = q; // dangerous
+  
+  // FIX: Use textContent instead of innerHTML to prevent XSS
+  document.getElementById('out').textContent = q;
+  
+  // Alternative fix: HTML escape function
+  // function escapeHtml(text) {
+  //   const map = {
+  //     '&': '&amp;',
+  //     '<': '&lt;',
+  //     '>': '&gt;',
+  //     '"': '&quot;',
+  //     "'": '&#039;'
+  //   };
+  //   return text.replace(/[&<>"']/g, m => map[m]);
+  // }
+  // document.getElementById('out').innerHTML = escapeHtml(q);
 </script>
